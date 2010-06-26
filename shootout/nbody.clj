@@ -2,13 +2,28 @@
 (ns shootout.nbody
   (:require 
     [clojure.contrib.str-utils2 :as su] )
-  (:gen-class)
-  )
+  (:gen-class) )
 
-(comment
-  Jovian planets N-body simulation.
-  From http://shootout.alioth.debian.org/u32q/benchmark.php?test=nbody&lang=all
-  )
+(comment"
+Jovian planets N-body simulation.
+    From http://shootout.alioth.debian.org/u32q/benchmark.php?test=nbody&lang=all
+
+Timing on MacBook Pro, N=50000000
+  real	0m54.964s
+  user	0m54.515s
+
+Timing for Java version - same machine, same N
+    Java from http://shootout.alioth.debian.org/u32q/benchmark.php?test=nbody&lang=java&sort=
+  real	0m13.118s
+  user	0m13.126s
+
+ According to the benchmark results, this makes Clojure
+ - Faster than Python/Ruby/Perl/PHP (20-45 min)
+ - Slower than C/Java/Scala/Ada/Pascal/Lisp SBCL/C #/Haskell (20-40 sec)
+ - In the ballpark of Erlang, OCaml and Go (1-3 min)
+
+ for this particular problem, which is relevant for heavy number crunching.
+")
 
 (def *solar-mass* (* 4 Math/PI Math/PI))
 (def *days-year* 365.24)
@@ -82,9 +97,6 @@
 
 (def *bodies* (convert-data))
 
-(defn reset []
-  (def *bodies* (convert-data)))
-
 ; Macros for speed.
 ; See http://clj-me.cgrand.net/2009/10/15/multidim-arrays/
 ; and http://www.bestinclass.dk/index.clj/2010/03/functional-fluid-dynamics-in-clojure.html
@@ -148,24 +160,25 @@
 (defn init 
   "Initializes state"
   []
-  (let [#^objects bodies *bodies*
-        len (int (alength bodies)) ]
-    (loop [i (int 0)
-           px (double 0.0)
-           py (double 0.0)
-           pz (double 0.0) ]
-      (if (>= i len)
-        (let [sun (doubles (aget bodies 0)) ]
-          (vx= sun (/ (- px) (double *solar-mass*)))
-          (vy= sun (/ (- py) (double *solar-mass*)))
-          (vz= sun (/ (- pz) (double *solar-mass*))))
-        (let [body (doubles (aget bodies i))
-              bmass (double (mass body)) ]
-          (recur
-            (int (inc i))
-            (+ px (* (vx body) bmass))
-            (+ py (* (vy body) bmass))
-            (+ pz (* (vz body) bmass))))))))
+  (def *bodies* (convert-data))
+(let [#^objects bodies *bodies*
+      len (int (alength bodies)) ]
+  (loop [i (int 0)
+         px (double 0.0)
+         py (double 0.0)
+         pz (double 0.0) ]
+    (if (>= i len)
+      (let [sun (doubles (aget bodies 0)) ]
+        (vx= sun (/ (- px) (double *solar-mass*)))
+        (vy= sun (/ (- py) (double *solar-mass*)))
+        (vz= sun (/ (- pz) (double *solar-mass*))))
+      (let [body (doubles (aget bodies i))
+            bmass (double (mass body)) ]
+        (recur
+          (int (inc i))
+          (+ px (* (vx body) bmass))
+          (+ py (* (vy body) bmass))
+          (+ pz (* (vz body) bmass))))))))
 
 (defn advance 
   "Move system one dt timestep forwards"
@@ -173,45 +186,45 @@
   (let [#^objects bodies *bodies*
         len (int (alength bodies))
         dt (double dt) ]
-      ; update velocities
-      (loop [i (int 0)]
-        (when (< i len)
-          (let [body (doubles (aget bodies i))
-                bx (double (x body))
-                by (double (y body))
-                bz (double (z body)) ]
-            (loop [j (unchecked-inc i)]
-              (when (< j len)
-                (let [nbody (doubles (aget bodies j))
-                      dx (double (- bx (x nbody)))
-                      dy (double (- by (y nbody)))
-                      dz (double (- bz (z nbody)))
-                      dsq (double
-                            (+ (* dx dx)
-                              (+ (* dy dy)
-                                (* dz dz))))
-                      dist (double (Math/sqrt dsq))
-                      mag (double (/ dt (* dsq dist))) ]
-                  (let [mult (double (* (mass nbody) mag))]
-                    (vx+= body (- (* dx mult)))
-                    (vy+= body (- (* dy mult)))
-                    (vz+= body (- (* dz mult))))
-                  (let [mult (double (* (mass body) mag))]
-                    (vx+= nbody (* dx mult))
-                    (vy+= nbody (* dy mult))
-                    (vz+= nbody (* dz mult))))
-                (recur (unchecked-inc j)))))
+    ; update velocities
+    (loop [i (int 0)]
+      (when (< i len)
+        (let [body (doubles (aget bodies i))
+              bx (double (x body))
+              by (double (y body))
+              bz (double (z body)) ]
+          (loop [j (unchecked-inc i)]
+            (when (< j len)
+              (let [nbody (doubles (aget bodies j))
+                    dx (double (- bx (x nbody)))
+                    dy (double (- by (y nbody)))
+                    dz (double (- bz (z nbody)))
+                    dsq (double
+                          (+ (* dx dx)
+                            (+ (* dy dy)
+                              (* dz dz))))
+                    dist (double (Math/sqrt dsq))
+                    mag (double (/ dt (* dsq dist))) ]
+                (let [mult (double (* (mass nbody) mag))]
+                  (vx+= body (- (* dx mult)))
+                  (vy+= body (- (* dy mult)))
+                  (vz+= body (- (* dz mult))))
+                (let [mult (double (* (mass body) mag))]
+                  (vx+= nbody (* dx mult))
+                  (vy+= nbody (* dy mult))
+                  (vz+= nbody (* dz mult))))
+              (recur (unchecked-inc j)))))
 
-          (recur (unchecked-inc i))))
+        (recur (unchecked-inc i))))
 
-       ; update position
-      (loop [i (int 0)]
-        (when (< i len)
-          (let [body (doubles (aget bodies i)) ]
-            (x+= body (* dt (vx body)))
-            (y+= body (* dt (vy body)))
-            (z+= body (* dt (vz body))))
-          (recur (unchecked-inc i))))))
+    ; update position
+    (loop [i (int 0)]
+      (when (< i len)
+        (let [body (doubles (aget bodies i)) ]
+          (x+= body (* dt (vx body)))
+          (y+= body (* dt (vy body)))
+          (z+= body (* dt (vz body))))
+        (recur (unchecked-inc i))))))
 
 
 (defn energy 
@@ -222,39 +235,36 @@
     (loop [i (int 0)
            e (double 0.0)]
       (if-not (< i len) e
-      (let [body (doubles (aget bodies i))
-            ne (double
-                 (+ e
-                   (* (* 0.5 (mass body))
-                     (+ (* (vx body)  (vx body) )
-                       (+ (* (vy body) (vy body))
-                         (* (vz body) (vz body)))))))
-            nne (double
-                  (loop [j (int (inc i))
-                         nne ne ]
-                    (if-not (< j len) nne
-                      (let [nbody (doubles (aget bodies j))
-                            dx (double (- (x body) (x nbody)))
-                            dy (double (- (y body) (y nbody)))
-                            dz (double (- (z body) (z nbody)))
-                            dist (double
-                                   (Math/sqrt
-                                     (+ (* dx dx)
-                                       (+ (* dy dy)
-                                         (* dz dz))))) ]
-                        (recur (int (inc j))
-                          (- nne
-                            (/ (* (mass body) (mass nbody))
-                              dist))))))) ]
-        (recur (int (inc i)) nne))))))
+        (let [body (doubles (aget bodies i))
+              ne (double
+                   (+ e
+                     (* (* 0.5 (mass body))
+                       (+ (* (vx body)  (vx body) )
+                         (+ (* (vy body) (vy body))
+                           (* (vz body) (vz body)))))))
+              nne (double
+                    (loop [j (int (inc i))
+                           nne ne ]
+                      (if-not (< j len) nne
+                        (let [nbody (doubles (aget bodies j))
+                              dx (double (- (x body) (x nbody)))
+                              dy (double (- (y body) (y nbody)))
+                              dz (double (- (z body) (z nbody)))
+                              dist (double
+                                     (Math/sqrt
+                                       (+ (* dx dx)
+                                         (+ (* dy dy)
+                                           (* dz dz))))) ]
+                          (recur (int (inc j))
+                            (- nne
+                              (/ (* (mass body) (mass nbody))
+                                dist))))))) ]
+          (recur (int (inc i)) nne))))))
 
 
 
-(defn -main
-  "Run simulation"
-  [& args]
+(defn -main [& args]
   (let [n (Integer/parseInt (first args)) ]
-    (reset)
     (init)
     (println (format "%.9f" (energy)))
     (dotimes [i (int n)]
@@ -265,7 +275,7 @@
 ; Data: http://shootout.alioth.debian.org/u32q/iofile.php?test=nbody&file=output
 (defn- verify []
   (let [res (with-out-str (-main "1000"))
-       [init end] (su/split res #"\s+") ]
+        [init end] (su/split res #"\s+") ]
     (if (= init "-0.169075164")
       (println "start state: OK")
       (println "start state failed:" init))
