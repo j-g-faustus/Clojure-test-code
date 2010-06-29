@@ -6,23 +6,25 @@
 
 (comment"
 Jovian planets N-body simulation.
-    From http://shootout.alioth.debian.org/u32q/benchmark.php?test=nbody&lang=all
+From http://shootout.alioth.debian.org/u32q/benchmark.php?test=nbody&lang=all
 
-Timing on MacBook Pro, N=50000000
-  real	0m54.964s
-  user	0m54.515s
+Timing on MacBook Pro, N=50000000, java -Xms256M -Xmx256M
+  real	0m50.777s
+  user	0m51.494s
 
-Timing for Java version - same machine, same N
-    Java from http://shootout.alioth.debian.org/u32q/benchmark.php?test=nbody&lang=java&sort=
+  $ java -version
+  java version 1.6.0_20
+  Java(TM) SE Runtime Environment (build 1.6.0_20-b02-279-10M3065)
+  Java HotSpot(TM) 64-Bit Server VM (build 16.3-b01-279, mixed mode)
+
+Timing for Java version - same machine, same N, same flags
+    Java from http://shootout.alioth.debian.org/u64/benchmark.php?test=nbody&lang=java&sort=
   real	0m13.118s
   user	0m13.126s
 
- According to the benchmark results, this makes Clojure
- - Faster than Python/Ruby/Perl/PHP (20-45 min)
- - Slower than C/Java/Scala/Ada/Pascal/Lisp SBCL/C #/Haskell (20-40 sec)
- - In the ballpark of Erlang, OCaml and Go (1-3 min)
-
- for this particular problem, which is relevant for heavy number crunching.
+See http://clj-me.cgrand.net/2009/10/15/multidim-arrays/
+and http://www.bestinclass.dk/index.clj/2010/03/functional-fluid-dynamics-in-clojure.html
+for more on numeric performance tuning in Clojure.
 ")
 
 (def *solar-mass* (* 4 Math/PI Math/PI))
@@ -30,7 +32,7 @@ Timing for Java version - same machine, same N
 
 ; Data for initial state
 (def *data*
-  ; list constants with names and tags for readability
+  ; names and tags for readability
   (list
     [:sun
      :x 0.0
@@ -77,65 +79,36 @@ Timing for Java version - same machine, same N
      :vz -9.51592254519715870e-05
      :mass 5.15138902046611451e-05] ))
 
-; Convert to Java Object[] of double[]
-(defn convert-data []
-  ; to Object[]
-  (into-array Object
-    ; to double[]
-    (map (fn [[x y z vx vy vz mass]]
-           (into-array Double/TYPE
-             (list x y z
-               (* vx *days-year*)
-               (* vy *days-year*)
-               (* vz *days-year*)
-               (* mass *solar-mass*))))
-      ; to just numbers
-      (map (fn [planet]
-             (map last (partition 2 (rest planet))))
-        *data*))))
-
-
-(def *bodies* (convert-data))
-
-; Macros for speed.
-; See http://clj-me.cgrand.net/2009/10/15/multidim-arrays/
-; and http://www.bestinclass.dk/index.clj/2010/03/functional-fluid-dynamics-in-clojure.html
-(defmacro aget!
-  ([array i]
-    `(double (aget ~(vary-meta array assoc :tag 'doubles) (int ~i)))))
-
-(defmacro aset!
-  ([array i v]
-    `(aset ~(vary-meta array assoc :tag 'doubles) (int ~i) (double ~v))))
-
 ; Convenience macros for array access
 (defmacro x [body]
-  `(aget! ~body 0))
+  `(aget ~body 0))
 (defmacro y [body]
-  `(aget! ~body 1))
+  `(aget ~body 1))
 (defmacro z [body]
-  `(aget! ~body 2))
+  `(aget ~body 2))
 (defmacro vx [body]
-  `(aget! ~body 3))
+  `(aget ~body 3))
 (defmacro vy [body]
-  `(aget! ~body 4))
+  `(aget ~body 4))
 (defmacro vz [body]
-  `(aget! ~body 5))
+  `(aget ~body 5))
 (defmacro mass [body]
-  `(aget! ~body 6))
+  `(aget ~body 6))
 
 (defmacro x= [body val]
-  `(aset! ~body (int 0) ~val))
+  `(aset ~body 0 ~val))
 (defmacro y= [body val]
-  `(aset! ~body (int 1) ~val))
+  `(aset ~body 1 ~val))
 (defmacro z= [body val]
-  `(aset! ~body (int 2) ~val))
+  `(aset ~body 2 ~val))
 (defmacro vx= [body val]
-  `(aset! ~body (int 3) ~val))
+  `(aset ~body 3 ~val))
 (defmacro vy= [body val]
-  `(aset! ~body (int 4) ~val))
+  `(aset ~body 4 ~val))
 (defmacro vz= [body val]
-  `(aset! ~body (int 5) ~val))
+  `(aset ~body 5 ~val))
+(defmacro mass= [body val]
+  `(aset ~body 6 ~val))
 
 (defmacro x+= [body val]
   (let [b# body]
@@ -156,66 +129,100 @@ Timing for Java version - same machine, same N
   (let [b# body]
     `(vz= ~b# (+ (vz ~b#) ~val))))
 
+; Convert to Java Object[] of double[]
+(defn convert-data []
+  ; to Object[]
+  (into-array Object
+    ; to double[]
+    (map (fn [body]
+           (let [^doubles b (into-array Double/TYPE
+                     (map last (partition 2 (rest body)))) ]
+             (vx= b (* (vx b) *days-year*))
+             (vy= b (* (vy b) *days-year*))
+             (vz= b (* (vz b) *days-year*))
+             (mass= b (* (mass b) *solar-mass*))
+             b))
+      *data*)))
 
-(defn init 
+
+(def *bodies* (convert-data))
+
+(defn reset-state []
+  (def *bodies* (convert-data)))
+
+(defn init-state []
   "Initializes state"
-  []
-  (def *bodies* (convert-data))
-(let [#^objects bodies *bodies*
-      len (int (alength bodies)) ]
-  (loop [i (int 0)
-         px (double 0.0)
-         py (double 0.0)
-         pz (double 0.0) ]
-    (if (>= i len)
-      (let [sun (doubles (aget bodies 0)) ]
-        (vx= sun (/ (- px) (double *solar-mass*)))
-        (vy= sun (/ (- py) (double *solar-mass*)))
-        (vz= sun (/ (- pz) (double *solar-mass*))))
-      (let [body (doubles (aget bodies i))
-            bmass (double (mass body)) ]
-        (recur
-          (int (inc i))
-          (+ px (* (vx body) bmass))
-          (+ py (* (vy body) bmass))
-          (+ pz (* (vz body) bmass))))))))
+  (reset-state)
+  (let [[px py pz] (reduce (fn [[px py pz] ^doubles b]
+                             [(+ px (* (vx b) (mass b)))
+                              (+ py (* (vy b) (mass b)))
+                              (+ pz (* (vz b) (mass b))) ])
+                     [0.0 0.0 0.0]
+                     *bodies*)
+        sun (aget *bodies* 0)
+        mass (mass sun) ]
+    (vx= sun (/ (- px) mass))
+    (vy= sun (/ (- py) mass))
+    (vz= sun (/ (- pz) mass))))
+
+(defn energy
+  "Total energy for current state"
+  ([] ; start
+    (energy *bodies*))
+  ([bodies] ; sum
+    (if-not bodies 0.0
+      (+ (energy (first bodies) (next bodies))
+        (energy (next bodies)))))
+  ([body nbodies] ; one body
+    (let [v-sq (+ (* (vx body) (vx body))
+                 (* (vy body) (vy body))
+                 (* (vz body) (vz body)))
+          e (* 1/2 (mass body) v-sq)  ; kinetic energy: 1/2 * m * v^2
+          f (fn [e nbody]
+              (let [dx (- (x body) (x nbody))
+                    dy (- (y body) (y nbody))
+                    dz (- (z body) (z nbody))
+                    dist (Math/sqrt
+                           (+ (* dx dx) (* dy dy) (* dz dz))) ]
+                (- e (/ (* (mass body) (mass nbody))
+                       dist)))) ]
+      (reduce f e nbodies))))
 
 (defn advance 
   "Move system one dt timestep forwards"
   [dt]
-  (let [#^objects bodies *bodies*
+  (let [#^objects bodies *bodies* ; x2 improvement
         len (int (alength bodies))
-        dt (double dt) ]
-    ; update velocities
+        dt (double dt) ]  ; x10 improvement 
+    ; update velocity
     (loop [i (int 0)]
       (when (< i len)
         (let [body (doubles (aget bodies i))
-              bx (double (x body))
-              by (double (y body))
-              bz (double (z body)) ]
-          (loop [j (unchecked-inc i)]
+              bx (x body)
+              by (y body)
+              bz (z body) ]
+          (loop [j (int (unchecked-inc i)) ]
             (when (< j len)
               (let [nbody (doubles (aget bodies j))
-                    dx (double (- bx (x nbody)))
-                    dy (double (- by (y nbody)))
-                    dz (double (- bz (z nbody)))
-                    dsq (double
-                          (+ (* dx dx)
-                            (+ (* dy dy)
-                              (* dz dz))))
-                    dist (double (Math/sqrt dsq))
-                    mag (double (/ dt (* dsq dist))) ]
-                (let [mult (double (* (mass nbody) mag))]
-                  (vx+= body (- (* dx mult)))
-                  (vy+= body (- (* dy mult)))
-                  (vz+= body (- (* dz mult))))
-                (let [mult (double (* (mass body) mag))]
+                    dx (- bx (x nbody))
+                    dy (- by (y nbody))
+                    dz (- bz (z nbody))
+                    dsq (+ (* dx dx)
+                          (+ (* dy dy)
+                            (* dz dz)))
+                    mag (/ dt
+                          (* dsq (Math/sqrt dsq))) ]
+                (let [mult (- (* (mass nbody) mag)) ] ; subtraction
+                  (vx+= body (* dx mult))
+                  (vy+= body (* dy mult))
+                  (vz+= body (* dz mult)))
+                (let [mult (* (mass body) mag) ]
                   (vx+= nbody (* dx mult))
                   (vy+= nbody (* dy mult))
-                  (vz+= nbody (* dz mult))))
-              (recur (unchecked-inc j)))))
+                  (vz+= nbody (* dz mult)))
+                (recur (unchecked-inc j)) )))
 
-        (recur (unchecked-inc i))))
+          (recur (unchecked-inc i)) )))
 
     ; update position
     (loop [i (int 0)]
@@ -226,59 +233,45 @@ Timing for Java version - same machine, same N
           (z+= body (* dt (vz body))))
         (recur (unchecked-inc i))))))
 
-
-(defn energy 
-  "Returns total energy for current state"
-  []
-  (let [#^objects bodies *bodies*
-        len (int (alength bodies)) ]
-    (loop [i (int 0)
-           e (double 0.0)]
-      (if-not (< i len) e
-        (let [body (doubles (aget bodies i))
-              ne (double
-                   (+ e
-                     (* (* 0.5 (mass body))
-                       (+ (* (vx body)  (vx body) )
-                         (+ (* (vy body) (vy body))
-                           (* (vz body) (vz body)))))))
-              nne (double
-                    (loop [j (int (inc i))
-                           nne ne ]
-                      (if-not (< j len) nne
-                        (let [nbody (doubles (aget bodies j))
-                              dx (double (- (x body) (x nbody)))
-                              dy (double (- (y body) (y nbody)))
-                              dz (double (- (z body) (z nbody)))
-                              dist (double
-                                     (Math/sqrt
-                                       (+ (* dx dx)
-                                         (+ (* dy dy)
-                                           (* dz dz))))) ]
-                          (recur (int (inc j))
-                            (- nne
-                              (/ (* (mass body) (mass nbody))
-                                dist))))))) ]
-          (recur (int (inc i)) nne))))))
-
-
-
 (defn -main [& args]
-  (let [n (Integer/parseInt (first args)) ]
-    (init)
-    (println (format "%.9f" (energy)))
-    (dotimes [i (int n)]
+  (let [[n x] args]
+    (when (= x "-wait")
+      (println "Press enter to start")
+      (read-line))
+    (init-state)
+    (when (not= x :bench)
+      (println (format "%.9f" (energy))))
+    (dotimes [_ (int (Integer/parseInt n))]
       (advance 0.01))
-    (println (format "%.9f" (energy)))))
+    (when (not= x :bench)
+      (println (format "%.9f" (energy))))))
+
+; Current timing n=5,000,000: 5.5 - 5.8 s, avg. around 5.6 after 3-4 runs.
+; Update: 5.3-5.4 s, after typecasting inner loop j to int
+; Update: 5.2-5.4 s, after skipping double typecast in aget!
+; Update: 5.1-5.3 s, after ??? - seems to be related to appropriate level of
+; typecasts. (Not casting all doubles, only some of them.)
+(defn time-test []
+  (time (-main "1000000")))
+
+(defn time-full []
+  (time (-main "50000000")))
+
+
+;(defn bench-test []
+; (cc/bench (-main "1000000" :bench)))
 
 ; Verify correct output for n = 1000
 ; Data: http://shootout.alioth.debian.org/u32q/iofile.php?test=nbody&file=output
 (defn- verify []
   (let [res (with-out-str (-main "1000"))
+        [e-init e-end] ["-0.169075164" "-0.169087605"]
         [init end] (su/split res #"\s+") ]
-    (if (= init "-0.169075164")
-      (println "start state: OK")
-      (println "start state failed:" init))
-    (if (= end "-0.169087605")
-      (println "end state: OK")
-      (println "end state failed:" end "should be:" "-0.169087605"))))
+    (print "Start state ")
+    (if (= init e-init)
+      (println "OK")
+      (println "failed:" init "should be" e-init))
+    (print "End state ")
+    (if (= end e-end)
+      (println "OK")
+      (println "failed:" end "should be:" e-end))))
