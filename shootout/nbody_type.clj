@@ -171,7 +171,7 @@ Timing for Java version - same machine, same N
       :mass 5.15138902046611451e-05 ) ))
 
 
-(def *bodies* nil)
+(def *bodies*)
 
 (defn init-state []
   "Initialize state"
@@ -198,21 +198,18 @@ Timing for Java version - same machine, same N
 
 (defn advance [dt]
   "Move system one dt timestep forwards"
-  (let [#^objects bodies *bodies*
+  (let [^objects bodies *bodies*
         len (int (alength bodies))
         dt (double dt) ]
-    ; update velocity
     (dotimes [i len]
       (let [^Body body (aget bodies i) ]
+        ; update velocity
         (loop [j (unchecked-inc i) ]
           (when (< j len)
             (let [^Body nbody (aget bodies j)]
               (.v-dt! body dt nbody)
-              (recur (unchecked-inc j)))))))
-
-    ; update position
-    (dotimes [i len]
-      (let [^Body body (aget bodies i)]
+              (recur (unchecked-inc j)))))
+        ; update position
         (.p-dt! body dt)))))
 
 
@@ -229,11 +226,9 @@ Timing for Java version - same machine, same N
 (defn- verify []
   (let [[e-init e-end] ["-0.169075164" "-0.169087605"]
         [init end] (su/split (with-out-str (-main "1000")) #"\s+") ]
-    (if (= init e-init)
-      (println "Start state OK")
+    (if (= init e-init) (println "Start state OK")
       (println "Start state ERROR: got" init "should be" e-init))
-    (if (= end e-end)
-      (println "End state OK")
+    (if (= end e-end) (println "End state OK")
       (println "End state ERROR: got" end "should be" e-end))))
 
 (defn time-test []
